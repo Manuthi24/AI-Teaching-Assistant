@@ -1,36 +1,16 @@
 # Python
+backend/venv/
 __pycache__/
 *.pyc
-.venv/
-venv/
-env/
 
 # Environment files
 .env
+backend/.env
+frontend/.env
 
-# Large model files
-*.bin
-*.safetensors
-*.pt
-*.pth
-*.ckpt
+# Node
+frontend/node_modules/
+frontend/dist/
 
-# Dataset files
-data/raw/
-data/processed/
-
-# Logs
-*.log
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
+# VS Code
 .vscode/
-.idea/
-
-# Node / React
-node_modules/
-dist/
-build/
