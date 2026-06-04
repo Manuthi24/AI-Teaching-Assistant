@@ -1,35 +1,52 @@
-import { useEffect, useState } from "react";
-import API from "./api/axios";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Login from "./pages/Login";
+import TeacherDashboard from "./pages/TeacherDashboard";
+import StudentDashboard from "./pages/StudentDashboard";
+
+function ProtectedRoute({ children, allowedRole }) {
+  const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user"));
+
+  if (!token || !user) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (allowedRole && user.role !== allowedRole) {
+    if (user.role === "teacher") {
+      return <Navigate to="/teacher/dashboard" replace />;
+    }
+
+    return <Navigate to="/student/dashboard" replace />;
+  }
+
+  return children;
+}
 
 function App() {
-  const [message, setMessage] = useState("Connecting to backend...");
-
-  useEffect(() => {
-    API.get("/")
-      .then((res) => {
-        setMessage(res.data.message);
-      })
-      .catch(() => {
-        setMessage("Backend not connected");
-      });
-  }, []);
-
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-      <div className="bg-white p-10 rounded-2xl shadow-xl text-center">
-        <h1 className="text-4xl font-bold text-indigo-600">
-          AI Teaching Assistant
-        </h1>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
 
-        <p className="mt-4 text-slate-600">
-          Full-stack RAG-based learning platform
-        </p>
+        <Route
+          path="/teacher/dashboard"
+          element={
+            <ProtectedRoute allowedRole="teacher">
+              <TeacherDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-        <div className="mt-6 bg-indigo-50 text-indigo-700 px-5 py-3 rounded-xl">
-          {message}
-        </div>
-      </div>
-    </div>
+        <Route
+          path="/student/dashboard"
+          element={
+            <ProtectedRoute allowedRole="student">
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
