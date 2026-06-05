@@ -6,13 +6,22 @@ from datetime import datetime
 from app.auth.dependencies import get_current_user, require_teacher
 from app.documents.pdf_utils import extract_text_from_pdf, chunk_text
 from app.embeddings.pinecone_service import upsert_document_chunks
+from app.database import get_database
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-documents_db = []
+
+def get_documents_collection():
+    db = get_database()
+    return db["documents"]
+
+
+def get_document_chunks_collection():
+    db = get_database()
+    return db["document_chunks"]
 
 
 @router.post("/upload")
@@ -61,6 +70,8 @@ async def upload_document(
             detail=f"Embedding/Pinecone storage failed: {str(e)}"
         )
 
+    created_at = datetime.utcnow().isoformat()
+
     document = {
         "id": document_id,
         "title": file.filename,
@@ -72,14 +83,31 @@ async def upload_document(
         "total_characters": len(extracted_text),
         "total_chunks": len(chunks),
         "vectors_stored": vectors_stored,
-        "chunks": chunks,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": created_at
     }
 
-    documents_db.append(document)
+    document_chunks = []
+
+    for index, chunk in enumerate(chunks):
+        document_chunks.append({
+            "document_id": document_id,
+            "title": file.filename,
+            "chunk_index": index,
+            "text": chunk,
+            "uploaded_by": current_user["email"],
+            "created_at": created_at
+        })
+
+    documents_collection = get_documents_collection()
+    chunks_collection = get_document_chunks_collection()
+
+    await documents_collection.insert_one(document)
+
+    if document_chunks:
+        await chunks_collection.insert_many(document_chunks)
 
     return {
-        "message": "PDF uploaded, embedded, and stored in Pinecone successfully",
+        "message": "PDF uploaded, embedded, and saved successfully",
         "document": {
             "id": document["id"],
             "title": document["title"],
@@ -93,37 +121,33 @@ async def upload_document(
 
 
 @router.get("/")
-def get_documents(current_user: dict = Depends(get_current_user)):
-    document_list = []
+async def get_documents(current_user: dict = Depends(get_current_user)):
+    documents_collection = get_documents_collection()
 
-    for document in documents_db:
-        document_list.append({
-            "id": document["id"],
-            "title": document["title"],
-            "uploaded_by": document["uploaded_by"],
-            "uploaded_by_name": document["uploaded_by_name"],
-            "total_characters": document["total_characters"],
-            "total_chunks": document["total_chunks"],
-            "vectors_stored": document.get("vectors_stored", 0),
-            "created_at": document["created_at"]
-        })
+    documents = []
+
+    cursor = documents_collection.find({}, {"_id": 0}).sort("created_at", -1)
+
+    async for document in cursor:
+        documents.append(document)
 
     return {
-        "documents": document_list
+        "documents": documents
     }
 
 
 @router.get("/{document_id}/preview")
-def preview_document_chunks(
+async def preview_document_chunks(
     document_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    document = None
+    documents_collection = get_documents_collection()
+    chunks_collection = get_document_chunks_collection()
 
-    for item in documents_db:
-        if item["id"] == document_id:
-            document = item
-            break
+    document = await documents_collection.find_one(
+        {"id": document_id},
+        {"_id": 0}
+    )
 
     if not document:
         raise HTTPException(
@@ -131,10 +155,22 @@ def preview_document_chunks(
             detail="Document not found"
         )
 
+    preview_chunks = []
+
+    cursor = (
+        chunks_collection
+        .find({"document_id": document_id}, {"_id": 0})
+        .sort("chunk_index", 1)
+        .limit(3)
+    )
+
+    async for chunk in cursor:
+        preview_chunks.append(chunk["text"])
+
     return {
         "document_id": document["id"],
         "title": document["title"],
         "total_chunks": document["total_chunks"],
         "vectors_stored": document.get("vectors_stored", 0),
-        "preview_chunks": document["chunks"][:3]
+        "preview_chunks": preview_chunks
     }

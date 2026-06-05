@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 
 from app.auth.schemas import GoogleLoginRequest
 from app.auth.service import (
-    fake_users_db,
     create_access_token,
-    find_user_by_email
+    create_or_update_google_user,
+    get_user_stats_from_db
 )
-from app.auth.dependencies import get_current_user as auth_current_user
+from app.auth.dependencies import get_current_user
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
 
 @router.post("/google-login")
-def google_login(request: GoogleLoginRequest):
+async def google_login(request: GoogleLoginRequest):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(
             status_code=500,
@@ -45,25 +45,13 @@ def google_login(request: GoogleLoginRequest):
                 detail="Google account email not found"
             )
 
-        user = find_user_by_email(email)
-
-        if not user:
-            user = {
-                "name": name,
-                "email": email,
-                "picture": picture,
-                "google_id": google_id,
-                "role": request.role,
-                "auth_provider": "google"
-            }
-
-            fake_users_db.append(user)
-
-        else:
-            user["name"] = name
-            user["picture"] = picture
-            user["google_id"] = google_id
-            user["role"] = request.role
+        user = await create_or_update_google_user(
+            email=email,
+            name=name,
+            picture=picture,
+            google_id=google_id,
+            role=request.role
+        )
 
         access_token = create_access_token(
             data={
@@ -92,7 +80,7 @@ def google_login(request: GoogleLoginRequest):
 
 
 @router.get("/me")
-def get_me(current_user: dict = Depends(auth_current_user)):
+async def get_me(current_user: dict = Depends(get_current_user)):
     return {
         "name": current_user["name"],
         "email": current_user["email"],
@@ -102,20 +90,5 @@ def get_me(current_user: dict = Depends(auth_current_user)):
 
 
 @router.get("/stats")
-def get_user_stats(current_user: dict = Depends(auth_current_user)):
-    total_users = len(fake_users_db)
-
-    total_teachers = 0
-    total_students = 0
-
-    for user in fake_users_db:
-        if user["role"] == "teacher":
-            total_teachers += 1
-        elif user["role"] == "student":
-            total_students += 1
-
-    return {
-        "total_users": total_users,
-        "total_teachers": total_teachers,
-        "total_students": total_students
-    }
+async def get_user_stats(current_user: dict = Depends(get_current_user)):
+    return await get_user_stats_from_db()
