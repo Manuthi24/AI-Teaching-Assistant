@@ -3,12 +3,18 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import TeacherDashboard from "./pages/TeacherDashboard";
 import TeacherGenerateQuiz from "./pages/TeacherGenerateQuiz";
+import TeacherReports from "./pages/TeacherReports";
+import TeacherQuizzes from "./pages/TeacherQuizzes";
+import TeacherEditQuiz from "./pages/TeacherEditQuiz";
 
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentChat from "./pages/StudentChat";
 import StudentQuizzes from "./pages/StudentQuizzes";
 import StudentAttemptQuiz from "./pages/StudentAttemptQuiz";
 import StudentQuizResult from "./pages/StudentQuizResult";
+import StudentHistory from "./pages/StudentHistory";
+
+import StudyMaterials from "./pages/StudyMaterials";
 
 function ProtectedRoute({ children, allowedRole }) {
   const token = localStorage.getItem("token");
@@ -54,6 +60,42 @@ function App() {
         />
 
         <Route
+          path="/teacher/quizzes"
+          element={
+            <ProtectedRoute allowedRole="teacher">
+              <TeacherQuizzes />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/teacher/quiz/edit/:quizId"
+          element={
+            <ProtectedRoute allowedRole="teacher">
+              <TeacherEditQuiz />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/teacher/reports"
+          element={
+            <ProtectedRoute allowedRole="teacher">
+              <TeacherReports />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/teacher/materials"
+          element={
+            <ProtectedRoute allowedRole="teacher">
+              <StudyMaterials />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/student/dashboard"
           element={
             <ProtectedRoute allowedRole="student">
@@ -94,6 +136,24 @@ function App() {
           element={
             <ProtectedRoute allowedRole="student">
               <StudentQuizResult />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/student/history"
+          element={
+            <ProtectedRoute allowedRole="student">
+              <StudentHistory />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/student/materials"
+          element={
+            <ProtectedRoute allowedRole="student">
+              <StudyMaterials />
             </ProtectedRoute>
           }
         />

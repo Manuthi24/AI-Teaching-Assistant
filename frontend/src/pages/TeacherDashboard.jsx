@@ -7,6 +7,7 @@ import {
   Users,
   Loader2,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 import API from "../api/axios";
 
@@ -19,6 +20,7 @@ function TeacherDashboard() {
   const [quizzes, setQuizzes] = useState([]);
   const [studentCount, setStudentCount] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState("");
 
   const handleLogout = () => {
@@ -85,6 +87,7 @@ function TeacherDashboard() {
       setSelectedFile(null);
 
       const fileInput = document.getElementById("pdfFileInput");
+
       if (fileInput) {
         fileInput.value = "";
       }
@@ -95,6 +98,29 @@ function TeacherDashboard() {
       setMessage(error.response?.data?.detail || "PDF upload failed.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (documentId, title) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete this document?\n\n${title}`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      setDeletingId(documentId);
+      setMessage("Deleting document and Pinecone vectors. Please wait...");
+
+      const res = await API.delete(`/documents/${documentId}`);
+
+      setMessage(res.data.message);
+      fetchDashboardData();
+    } catch (error) {
+      console.error(error);
+      setMessage(error.response?.data?.detail || "Document deletion failed.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -117,13 +143,39 @@ function TeacherDashboard() {
       </div>
 
       <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <DashboardCard icon={<FileText />} title="Documents" value={documents.length} />
-        <DashboardCard icon={<ClipboardList />} title="Quizzes" value={quizzes.length} />
+        <div
+          onClick={() => navigate("/teacher/materials")}
+          className="bg-white rounded-2xl shadow p-6 cursor-pointer hover:shadow-lg transition"
+        >
+          <div className="text-indigo-600 mb-4">
+            <FileText />
+          </div>
+
+          <h3 className="text-slate-500">Documents</h3>
+
+          <p className="text-3xl font-bold text-slate-800 mt-2">
+            {documents.length}
+          </p>
+
+          <p className="text-sm text-indigo-600 mt-3">View materials</p>
+        </div>
+
+        <DashboardCard
+          icon={<ClipboardList />}
+          title="Quizzes"
+          value={quizzes.length}
+        />
+
         <DashboardCard icon={<Users />} title="Students" value={studentCount} />
-        <DashboardCard icon={<Upload />} title="Uploads" value={documents.length} />
+
+        <DashboardCard
+          icon={<Upload />}
+          title="Uploads"
+          value={documents.length}
+        />
       </div>
 
-      <div className="px-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow p-6">
           <h2 className="text-xl font-bold text-slate-800 mb-3">
             Upload Study Materials
@@ -147,7 +199,8 @@ function TeacherDashboard() {
 
             {selectedFile && (
               <p className="mt-3 text-sm text-slate-700">
-                Selected: <span className="font-medium">{selectedFile.name}</span>
+                Selected:{" "}
+                <span className="font-medium">{selectedFile.name}</span>
               </p>
             )}
           </div>
@@ -183,14 +236,42 @@ function TeacherDashboard() {
           </h2>
 
           <p className="text-slate-500 mb-5">
-            Generate quizzes automatically from uploaded study materials using AI.
+            Generate quizzes automatically from uploaded study materials using
+            AI.
+          </p>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => navigate("/teacher/generate-quiz")}
+              className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700"
+            >
+              Generate Quiz
+            </button>
+
+            <button
+              onClick={() => navigate("/teacher/quizzes")}
+              className="bg-indigo-600 text-white px-6 py-3 rounded-xl hover:bg-indigo-700"
+            >
+              Manage Quizzes
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-3">
+            Student Reports
+          </h2>
+
+          <p className="text-slate-500 mb-5">
+            View student quiz attempts, scores, percentages, and learning
+            progress.
           </p>
 
           <button
-            onClick={() => navigate("/teacher/generate-quiz")}
-            className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700"
+            onClick={() => navigate("/teacher/reports")}
+            className="bg-slate-800 text-white px-6 py-3 rounded-xl hover:bg-slate-900"
           >
-            Generate Quiz
+            View Reports
           </button>
         </div>
       </div>
@@ -214,6 +295,7 @@ function TeacherDashboard() {
                     <th className="py-3">Characters</th>
                     <th className="py-3">Uploaded By</th>
                     <th className="py-3">Status</th>
+                    <th className="py-3">Action</th>
                   </tr>
                 </thead>
 
@@ -223,15 +305,39 @@ function TeacherDashboard() {
                       <td className="py-4 font-medium text-slate-800">
                         {doc.title}
                       </td>
+
                       <td className="py-4">{doc.total_chunks}</td>
                       <td className="py-4">{doc.vectors_stored}</td>
                       <td className="py-4">{doc.total_characters}</td>
                       <td className="py-4">{doc.uploaded_by_name}</td>
+
                       <td className="py-4">
                         <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm inline-flex items-center gap-1">
                           <CheckCircle size={14} />
                           Processed
                         </span>
+                      </td>
+
+                      <td className="py-4">
+                        <button
+                          onClick={() =>
+                            handleDeleteDocument(doc.id, doc.title)
+                          }
+                          disabled={deletingId === doc.id}
+                          className="bg-red-50 text-red-600 px-3 py-2 rounded-xl hover:bg-red-100 disabled:opacity-50 inline-flex items-center gap-2"
+                        >
+                          {deletingId === doc.id ? (
+                            <>
+                              <Loader2 className="animate-spin" size={16} />
+                              Deleting
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 size={16} />
+                              Delete
+                            </>
+                          )}
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -1,20 +1,44 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, ClipboardList } from "lucide-react";
 import API from "../api/axios";
 
 function TeacherGenerateQuiz() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [topic, setTopic] = useState("");
   const [numQuestions, setNumQuestions] = useState(5);
+  const [documents, setDocuments] = useState([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState(
+    location.state?.selectedDocumentId || ""
+  );
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const fetchDocuments = async () => {
+    try {
+      const res = await API.get("/documents/");
+      setDocuments(res.data.documents || []);
+    } catch (error) {
+      console.error(error);
+      setMessage("Failed to load uploaded documents.");
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
   const handleGenerateQuiz = async () => {
     if (!topic.trim()) {
       setMessage("Please enter a quiz topic.");
+      return;
+    }
+
+    if (!selectedDocumentId) {
+      setMessage("Please select a study material PDF before generating quiz.");
       return;
     }
 
@@ -26,6 +50,7 @@ function TeacherGenerateQuiz() {
       const res = await API.post("/quiz/generate", {
         topic: topic,
         num_questions: Number(numQuestions),
+        document_id: selectedDocumentId,
       });
 
       setQuiz(res.data.quiz);
@@ -53,7 +78,7 @@ function TeacherGenerateQuiz() {
             Generate AI Quiz
           </h1>
           <p className="text-slate-500">
-            Create quizzes from uploaded study materials.
+            Create quizzes from a selected uploaded study material.
           </p>
         </div>
       </div>
@@ -64,24 +89,56 @@ function TeacherGenerateQuiz() {
             <div className="bg-purple-100 text-purple-600 p-3 rounded-xl">
               <ClipboardList />
             </div>
+
             <div>
               <h2 className="text-xl font-bold text-slate-800">
                 Quiz Details
               </h2>
               <p className="text-slate-500">
-                Enter a topic that exists in your uploaded PDFs.
+                Select a PDF and enter a topic from that document.
               </p>
             </div>
           </div>
 
           <label className="block text-sm font-medium text-slate-700 mb-2">
+            Select Study Material PDF
+          </label>
+
+          <select
+            value={selectedDocumentId}
+            onChange={(e) => {
+              setSelectedDocumentId(e.target.value);
+              setMessage("");
+              setQuiz(null);
+            }}
+            className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            <option value="">Select an uploaded document</option>
+
+            {documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {doc.title}
+              </option>
+            ))}
+          </select>
+
+          {documents.length === 0 && (
+            <p className="mt-2 text-sm text-red-500">
+              No uploaded documents found. Please upload a PDF first.
+            </p>
+          )}
+
+          <label className="block text-sm font-medium text-slate-700 mb-2 mt-5">
             Topic
           </label>
 
           <input
             type="text"
             value={topic}
-            onChange={(e) => setTopic(e.target.value)}
+            onChange={(e) => {
+              setTopic(e.target.value);
+              setMessage("");
+            }}
             placeholder="Example: machine learning"
             className="w-full border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500"
           />
@@ -102,7 +159,7 @@ function TeacherGenerateQuiz() {
 
           <button
             onClick={handleGenerateQuiz}
-            disabled={loading}
+            disabled={loading || documents.length === 0}
             className="mt-6 bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 disabled:bg-purple-300 flex items-center gap-2"
           >
             {loading ? (
@@ -128,8 +185,12 @@ function TeacherGenerateQuiz() {
               {quiz.title}
             </h2>
 
-            <p className="text-slate-500 mb-5">
+            <p className="text-slate-500 mb-2">
               Topic: {quiz.topic} | Questions: {quiz.questions.length}
+            </p>
+
+            <p className="text-slate-500 mb-5">
+              Source Document: {quiz.source_document_title}
             </p>
 
             <div className="space-y-5">
