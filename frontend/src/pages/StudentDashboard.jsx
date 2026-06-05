@@ -46,7 +46,10 @@ function StudentDashboard() {
             Ask questions from uploaded study materials using RAG-based AI chat.
           </p>
 
-          <button className="bg-indigo-600 text-white px-6 py-3 rounded-xl hover:bg-indigo-700">
+          <button
+            onClick={() => navigate("/student/chat")}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-xl hover:bg-indigo-700"
+          >
             Start Chat
           </button>
         </div>
