@@ -1,15 +1,59 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageCircle, BookOpen, ClipboardCheck, Trophy } from "lucide-react";
+import API from "../api/axios";
 
 function StudentDashboard() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user"));
+
+  const [documentsCount, setDocumentsCount] = useState(0);
+  const [chatCount, setChatCount] = useState(0);
+  const [quizCount, setQuizCount] = useState(0);
+  const [averageScore, setAverageScore] = useState(0);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/");
   };
+
+  const fetchDashboardData = async () => {
+    try {
+      const [documentsRes, chatsRes, quizzesRes, attemptsRes] = await Promise.all([
+        API.get("/documents/"),
+        API.get("/chat/history"),
+        API.get("/quiz/"),
+        API.get("/quiz/attempts/history"),
+      ]);
+
+      const documents = documentsRes.data.documents || [];
+      const chats = chatsRes.data.history || [];
+      const quizzes = quizzesRes.data.quizzes || [];
+      const attempts = attemptsRes.data.history || [];
+
+      setDocumentsCount(documents.length);
+      setChatCount(chats.length);
+      setQuizCount(quizzes.length);
+
+      if (attempts.length > 0) {
+        const totalPercentage = attempts.reduce(
+          (sum, attempt) => sum + Number(attempt.percentage || 0),
+          0
+        );
+
+        setAverageScore(Math.round(totalPercentage / attempts.length));
+      } else {
+        setAverageScore(0);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -30,10 +74,10 @@ function StudentDashboard() {
       </div>
 
       <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <DashboardCard icon={<BookOpen />} title="Study Materials" value="0" />
-        <DashboardCard icon={<MessageCircle />} title="AI Chats" value="0" />
-        <DashboardCard icon={<ClipboardCheck />} title="Quizzes" value="0" />
-        <DashboardCard icon={<Trophy />} title="Average Score" value="0%" />
+        <DashboardCard icon={<BookOpen />} title="Study Materials" value={documentsCount} />
+        <DashboardCard icon={<MessageCircle />} title="AI Chats" value={chatCount} />
+        <DashboardCard icon={<ClipboardCheck />} title="Quizzes" value={quizCount} />
+        <DashboardCard icon={<Trophy />} title="Average Score" value={`${averageScore}%`} />
       </div>
 
       <div className="px-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -63,7 +107,10 @@ function StudentDashboard() {
             Take AI-generated quizzes and track your score history.
           </p>
 
-          <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700">
+          <button
+            onClick={() => navigate("/student/quizzes")}
+            className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700"
+          >
             View Quizzes
           </button>
         </div>
