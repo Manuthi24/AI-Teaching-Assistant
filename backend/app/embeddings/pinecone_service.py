@@ -57,14 +57,23 @@ def upsert_document_chunks(
 
     return len(vectors)
 
-def search_similar_chunks(question: str, top_k: int = 5):
+
+def search_similar_chunks(question: str, top_k: int = 3, document_id: str = None):
     query_embedding = generate_embedding(question)
+
+    query_filter = None
+
+    if document_id:
+        query_filter = {
+            "document_id": {"$eq": document_id}
+        }
 
     results = index.query(
         vector=query_embedding,
         top_k=top_k,
         namespace=PINECONE_NAMESPACE,
-        include_metadata=True
+        include_metadata=True,
+        filter=query_filter
     )
 
     matches = results.matches if hasattr(results, "matches") else results.get("matches", [])
@@ -84,3 +93,25 @@ def search_similar_chunks(question: str, top_k: int = 5):
         })
 
     return relevant_chunks
+
+
+def delete_document_vectors(document_id: str, total_chunks: int):
+    if total_chunks <= 0:
+        return 0
+
+    vector_ids = [
+        f"{document_id}_chunk_{chunk_index}"
+        for chunk_index in range(total_chunks)
+    ]
+
+    batch_size = 100
+
+    for i in range(0, len(vector_ids), batch_size):
+        batch = vector_ids[i:i + batch_size]
+
+        index.delete(
+            ids=batch,
+            namespace=PINECONE_NAMESPACE
+        )
+
+    return len(vector_ids)

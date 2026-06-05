@@ -18,6 +18,3 @@ frontend/dist/
 # Uploaded PDF files
 backend/uploads/
 
-# MongoDB Credentials
-#Username: aiuser
-#Password: AiTeach12345

@@ -15,6 +15,11 @@ def get_chats_collection():
     return db["chats"]
 
 
+def get_documents_collection():
+    db = get_database()
+    return db["documents"]
+
+
 @router.post("/ask")
 async def ask_question(
     request: ChatRequest,
@@ -26,12 +31,36 @@ async def ask_question(
             detail="Question cannot be empty"
         )
 
-    relevant_chunks = search_similar_chunks(request.question, top_k=3)
+    selected_document = None
+
+    if request.document_id:
+        documents_collection = get_documents_collection()
+
+        selected_document = await documents_collection.find_one(
+            {"id": request.document_id},
+            {"_id": 0}
+        )
+
+        if not selected_document:
+            raise HTTPException(
+                status_code=404,
+                detail="Selected document not found"
+            )
+
+    relevant_chunks = search_similar_chunks(
+        question=request.question,
+        top_k=3,
+        document_id=request.document_id
+    )
 
     if not relevant_chunks:
         return {
-            "answer": "I could not find relevant information in the uploaded study materials.",
-            "sources": []
+            "question": request.question,
+            "answer": "I could not find relevant information in the selected study material.",
+            "sources": [],
+            "source_document_id": request.document_id,
+            "source_document_title": selected_document["title"] if selected_document else "All uploaded documents",
+            "created_at": datetime.utcnow().isoformat()
         }
 
     answer = generate_rag_answer(
@@ -45,6 +74,8 @@ async def ask_question(
         "question": request.question,
         "answer": answer,
         "sources": relevant_chunks,
+        "source_document_id": request.document_id,
+        "source_document_title": selected_document["title"] if selected_document else "All uploaded documents",
         "created_at": datetime.utcnow().isoformat()
     }
 
@@ -55,6 +86,8 @@ async def ask_question(
         "question": request.question,
         "answer": answer,
         "sources": relevant_chunks,
+        "source_document_id": chat_record["source_document_id"],
+        "source_document_title": chat_record["source_document_title"],
         "created_at": chat_record["created_at"]
     }
 

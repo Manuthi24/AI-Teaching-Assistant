@@ -5,7 +5,10 @@ from datetime import datetime
 
 from app.auth.dependencies import get_current_user, require_teacher
 from app.documents.pdf_utils import extract_text_from_pdf, chunk_text
-from app.embeddings.pinecone_service import upsert_document_chunks
+from app.embeddings.pinecone_service import (
+    upsert_document_chunks,
+    delete_document_vectors
+)
 from app.database import get_database
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -173,4 +176,50 @@ async def preview_document_chunks(
         "total_chunks": document["total_chunks"],
         "vectors_stored": document.get("vectors_stored", 0),
         "preview_chunks": preview_chunks
+    }
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: str,
+    current_user: dict = Depends(require_teacher)
+):
+    documents_collection = get_documents_collection()
+    chunks_collection = get_document_chunks_collection()
+
+    document = await documents_collection.find_one(
+        {"id": document_id},
+        {"_id": 0}
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found"
+        )
+
+    try:
+        deleted_vectors = delete_document_vectors(
+            document_id=document_id,
+            total_chunks=document.get("total_chunks", 0)
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pinecone vector deletion failed: {str(e)}"
+        )
+
+    file_path = Path(document.get("file_path", ""))
+
+    if file_path.exists():
+        file_path.unlink()
+
+    await documents_collection.delete_one({"id": document_id})
+    await chunks_collection.delete_many({"document_id": document_id})
+
+    return {
+        "message": "Document, chunks, file, and Pinecone vectors deleted successfully",
+        "document_id": document_id,
+        "deleted_vectors": deleted_vectors
     }
