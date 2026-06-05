@@ -1,5 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header
-from jose import jwt, JWTError
+from fastapi import APIRouter, HTTPException, Depends
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import os
@@ -9,10 +8,9 @@ from app.auth.schemas import GoogleLoginRequest
 from app.auth.service import (
     fake_users_db,
     create_access_token,
-    find_user_by_email,
-    SECRET_KEY,
-    ALGORITHM
+    find_user_by_email
 )
+from app.auth.dependencies import get_current_user as auth_current_user
 
 load_dotenv()
 
@@ -94,42 +92,30 @@ def google_login(request: GoogleLoginRequest):
 
 
 @router.get("/me")
-def get_current_user(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header missing"
-        )
+def get_me(current_user: dict = Depends(auth_current_user)):
+    return {
+        "name": current_user["name"],
+        "email": current_user["email"],
+        "picture": current_user.get("picture"),
+        "role": current_user["role"]
+    }
 
-    try:
-        token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 
-        email = payload.get("sub")
+@router.get("/stats")
+def get_user_stats(current_user: dict = Depends(auth_current_user)):
+    total_users = len(fake_users_db)
 
-        if not email:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token payload"
-            )
+    total_teachers = 0
+    total_students = 0
 
-        user = find_user_by_email(email)
+    for user in fake_users_db:
+        if user["role"] == "teacher":
+            total_teachers += 1
+        elif user["role"] == "student":
+            total_students += 1
 
-        if not user:
-            raise HTTPException(
-                status_code=401,
-                detail="User not found"
-            )
-
-        return {
-            "name": user["name"],
-            "email": user["email"],
-            "picture": user.get("picture"),
-            "role": user["role"]
-        }
-
-    except JWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
+    return {
+        "total_users": total_users,
+        "total_teachers": total_teachers,
+        "total_students": total_students
+    }

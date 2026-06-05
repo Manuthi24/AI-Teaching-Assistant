@@ -46,3 +46,12 @@ def require_teacher(current_user: dict = Depends(get_current_user)):
         )
 
     return current_user
+
+def require_student(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "student":
+        raise HTTPException(
+            status_code=403,
+            detail="Only students can access this feature"
+        )
+
+    return current_user

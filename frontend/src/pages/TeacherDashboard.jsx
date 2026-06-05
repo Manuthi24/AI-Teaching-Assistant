@@ -16,6 +16,8 @@ function TeacherDashboard() {
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [quizzes, setQuizzes] = useState([]);
+  const [studentCount, setStudentCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -25,17 +27,24 @@ function TeacherDashboard() {
     navigate("/");
   };
 
-  const fetchDocuments = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const res = await API.get("/documents/");
-      setDocuments(res.data.documents);
+      const [documentsRes, quizzesRes, statsRes] = await Promise.all([
+        API.get("/documents/"),
+        API.get("/quiz/"),
+        API.get("/auth/stats"),
+      ]);
+
+      setDocuments(documentsRes.data.documents || []);
+      setQuizzes(quizzesRes.data.quizzes || []);
+      setStudentCount(statsRes.data.total_students || 0);
     } catch (error) {
       console.error(error);
     }
   };
 
   useEffect(() => {
-    fetchDocuments();
+    fetchDashboardData();
   }, []);
 
   const handleFileChange = (e) => {
@@ -61,7 +70,7 @@ function TeacherDashboard() {
 
     try {
       setUploading(true);
-      setMessage("");
+      setMessage("Uploading PDF and creating embeddings. Please wait...");
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -75,17 +84,15 @@ function TeacherDashboard() {
       setMessage(res.data.message);
       setSelectedFile(null);
 
-      document.getElementById("pdfFileInput").value = "";
+      const fileInput = document.getElementById("pdfFileInput");
+      if (fileInput) {
+        fileInput.value = "";
+      }
 
-      fetchDocuments();
+      fetchDashboardData();
     } catch (error) {
       console.error(error);
-
-      if (error.response?.data?.detail) {
-        setMessage(error.response.data.detail);
-      } else {
-        setMessage("PDF upload failed.");
-      }
+      setMessage(error.response?.data?.detail || "PDF upload failed.");
     } finally {
       setUploading(false);
     }
@@ -110,13 +117,9 @@ function TeacherDashboard() {
       </div>
 
       <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <DashboardCard
-          icon={<FileText />}
-          title="Documents"
-          value={documents.length}
-        />
-        <DashboardCard icon={<ClipboardList />} title="Quizzes" value="0" />
-        <DashboardCard icon={<Users />} title="Students" value="0" />
+        <DashboardCard icon={<FileText />} title="Documents" value={documents.length} />
+        <DashboardCard icon={<ClipboardList />} title="Quizzes" value={quizzes.length} />
+        <DashboardCard icon={<Users />} title="Students" value={studentCount} />
         <DashboardCard icon={<Upload />} title="Uploads" value={documents.length} />
       </div>
 
@@ -127,8 +130,8 @@ function TeacherDashboard() {
           </h2>
 
           <p className="text-slate-500 mb-5">
-            Upload PDF documents. The backend will extract text and split the
-            content into chunks for the RAG system.
+            Upload PDF documents. The backend will extract text, create
+            embeddings, and store vectors in Pinecone for the RAG system.
           </p>
 
           <div className="border-2 border-dashed border-indigo-300 rounded-2xl p-6 text-center bg-indigo-50/50">
@@ -180,11 +183,13 @@ function TeacherDashboard() {
           </h2>
 
           <p className="text-slate-500 mb-5">
-            Later, you will generate quizzes automatically from uploaded study
-            materials.
+            Generate quizzes automatically from uploaded study materials using AI.
           </p>
 
-          <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700">
+          <button
+            onClick={() => navigate("/teacher/generate-quiz")}
+            className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700"
+          >
             Generate Quiz
           </button>
         </div>
@@ -205,6 +210,7 @@ function TeacherDashboard() {
                   <tr className="border-b text-slate-500">
                     <th className="py-3">Document</th>
                     <th className="py-3">Chunks</th>
+                    <th className="py-3">Vectors</th>
                     <th className="py-3">Characters</th>
                     <th className="py-3">Uploaded By</th>
                     <th className="py-3">Status</th>
@@ -218,6 +224,7 @@ function TeacherDashboard() {
                         {doc.title}
                       </td>
                       <td className="py-4">{doc.total_chunks}</td>
+                      <td className="py-4">{doc.vectors_stored}</td>
                       <td className="py-4">{doc.total_characters}</td>
                       <td className="py-4">{doc.uploaded_by_name}</td>
                       <td className="py-4">

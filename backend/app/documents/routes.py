@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.auth.dependencies import get_current_user, require_teacher
 from app.documents.pdf_utils import extract_text_from_pdf, chunk_text
+from app.embeddings.pinecone_service import upsert_document_chunks
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -45,6 +46,21 @@ async def upload_document(
 
     chunks = chunk_text(extracted_text)
 
+    try:
+        vectors_stored = upsert_document_chunks(
+            document_id=document_id,
+            title=file.filename,
+            chunks=chunks,
+            uploaded_by=current_user["email"],
+            uploaded_by_name=current_user["name"]
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embedding/Pinecone storage failed: {str(e)}"
+        )
+
     document = {
         "id": document_id,
         "title": file.filename,
@@ -55,6 +71,7 @@ async def upload_document(
         "uploaded_by_name": current_user["name"],
         "total_characters": len(extracted_text),
         "total_chunks": len(chunks),
+        "vectors_stored": vectors_stored,
         "chunks": chunks,
         "created_at": datetime.utcnow().isoformat()
     }
@@ -62,13 +79,14 @@ async def upload_document(
     documents_db.append(document)
 
     return {
-        "message": "PDF uploaded and text extracted successfully",
+        "message": "PDF uploaded, embedded, and stored in Pinecone successfully",
         "document": {
             "id": document["id"],
             "title": document["title"],
             "uploaded_by": document["uploaded_by"],
             "total_characters": document["total_characters"],
             "total_chunks": document["total_chunks"],
+            "vectors_stored": document["vectors_stored"],
             "created_at": document["created_at"]
         }
     }
@@ -86,6 +104,7 @@ def get_documents(current_user: dict = Depends(get_current_user)):
             "uploaded_by_name": document["uploaded_by_name"],
             "total_characters": document["total_characters"],
             "total_chunks": document["total_chunks"],
+            "vectors_stored": document.get("vectors_stored", 0),
             "created_at": document["created_at"]
         })
 
@@ -116,5 +135,6 @@ def preview_document_chunks(
         "document_id": document["id"],
         "title": document["title"],
         "total_chunks": document["total_chunks"],
+        "vectors_stored": document.get("vectors_stored", 0),
         "preview_chunks": document["chunks"][:3]
     }
