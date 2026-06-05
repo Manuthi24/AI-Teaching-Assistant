@@ -7,7 +7,9 @@ from app.auth.service import SECRET_KEY, ALGORITHM, find_user_by_email
 security = HTTPBearer()
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     try:
         token = credentials.credentials
 
@@ -21,7 +23,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                 detail="Invalid token payload"
             )
 
-        user = find_user_by_email(email)
+        user = await find_user_by_email(email)
 
         if not user:
             raise HTTPException(
@@ -38,7 +40,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         )
 
 
-def require_teacher(current_user: dict = Depends(get_current_user)):
+async def require_teacher(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "teacher":
         raise HTTPException(
             status_code=403,
@@ -47,7 +49,8 @@ def require_teacher(current_user: dict = Depends(get_current_user)):
 
     return current_user
 
-def require_student(current_user: dict = Depends(get_current_user)):
+
+async def require_student(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "student":
         raise HTTPException(
             status_code=403,

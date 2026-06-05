@@ -5,14 +5,18 @@ from app.auth.dependencies import require_student
 from app.chat.schemas import ChatRequest
 from app.embeddings.pinecone_service import search_similar_chunks
 from app.llm.groq_service import generate_rag_answer
+from app.database import get_database
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
-chat_history_db = []
+
+def get_chats_collection():
+    db = get_database()
+    return db["chats"]
 
 
 @router.post("/ask")
-def ask_question(
+async def ask_question(
     request: ChatRequest,
     current_user: dict = Depends(require_student)
 ):
@@ -44,7 +48,8 @@ def ask_question(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    chat_history_db.append(chat_record)
+    chats_collection = get_chats_collection()
+    await chats_collection.insert_one(chat_record)
 
     return {
         "question": request.question,
@@ -55,13 +60,23 @@ def ask_question(
 
 
 @router.get("/history")
-def get_chat_history(current_user: dict = Depends(require_student)):
-    student_history = []
+async def get_chat_history(current_user: dict = Depends(require_student)):
+    chats_collection = get_chats_collection()
 
-    for chat in chat_history_db:
-        if chat["student_email"] == current_user["email"]:
-            student_history.append(chat)
+    history = []
+
+    cursor = (
+        chats_collection
+        .find(
+            {"student_email": current_user["email"]},
+            {"_id": 0}
+        )
+        .sort("created_at", -1)
+    )
+
+    async for chat in cursor:
+        history.append(chat)
 
     return {
-        "history": student_history
+        "history": history
     }

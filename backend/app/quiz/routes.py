@@ -6,11 +6,19 @@ from app.auth.dependencies import require_teacher, require_student, get_current_
 from app.quiz.schemas import QuizGenerateRequest, QuizSubmitRequest
 from app.embeddings.pinecone_service import search_similar_chunks
 from app.llm.groq_service import generate_quiz_questions
+from app.database import get_database
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 
-quizzes_db = []
-quiz_attempts_db = []
+
+def get_quizzes_collection():
+    db = get_database()
+    return db["quizzes"]
+
+
+def get_quiz_attempts_collection():
+    db = get_database()
+    return db["quiz_attempts"]
 
 
 def remove_correct_answers(quiz: dict):
@@ -35,7 +43,7 @@ def remove_correct_answers(quiz: dict):
 
 
 @router.post("/generate")
-def generate_quiz(
+async def generate_quiz(
     request: QuizGenerateRequest,
     current_user: dict = Depends(require_teacher)
 ):
@@ -60,19 +68,29 @@ def generate_quiz(
             detail=f"Quiz generation failed: {str(e)}"
         )
 
+    questions = quiz_data.get("questions", [])
+
+    if not questions:
+        raise HTTPException(
+            status_code=500,
+            detail="Quiz generation failed: No questions returned by AI"
+        )
+
     quiz_id = str(uuid4())
+    created_at = datetime.utcnow().isoformat()
 
     quiz = {
         "id": quiz_id,
         "title": quiz_data.get("title", f"Quiz on {request.topic}"),
         "topic": request.topic,
-        "questions": quiz_data.get("questions", []),
+        "questions": questions,
         "created_by": current_user["email"],
         "created_by_name": current_user["name"],
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": created_at
     }
 
-    quizzes_db.append(quiz)
+    quizzes_collection = get_quizzes_collection()
+    await quizzes_collection.insert_one(quiz.copy())
 
     return {
         "message": "Quiz generated successfully",
@@ -81,10 +99,14 @@ def generate_quiz(
 
 
 @router.get("/")
-def get_quizzes(current_user: dict = Depends(get_current_user)):
+async def get_quizzes(current_user: dict = Depends(get_current_user)):
+    quizzes_collection = get_quizzes_collection()
+
     quiz_list = []
 
-    for quiz in quizzes_db:
+    cursor = quizzes_collection.find({}, {"_id": 0}).sort("created_at", -1)
+
+    async for quiz in cursor:
         quiz_list.append({
             "id": quiz["id"],
             "title": quiz["title"],
@@ -100,16 +122,16 @@ def get_quizzes(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/{quiz_id}")
-def get_quiz(
+async def get_quiz(
     quiz_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    quiz = None
+    quizzes_collection = get_quizzes_collection()
 
-    for item in quizzes_db:
-        if item["id"] == quiz_id:
-            quiz = item
-            break
+    quiz = await quizzes_collection.find_one(
+        {"id": quiz_id},
+        {"_id": 0}
+    )
 
     if not quiz:
         raise HTTPException(
@@ -128,16 +150,17 @@ def get_quiz(
 
 
 @router.post("/submit")
-def submit_quiz(
+async def submit_quiz(
     request: QuizSubmitRequest,
     current_user: dict = Depends(require_student)
 ):
-    quiz = None
+    quizzes_collection = get_quizzes_collection()
+    attempts_collection = get_quiz_attempts_collection()
 
-    for item in quizzes_db:
-        if item["id"] == request.quiz_id:
-            quiz = item
-            break
+    quiz = await quizzes_collection.find_one(
+        {"id": request.quiz_id},
+        {"_id": 0}
+    )
 
     if not quiz:
         raise HTTPException(
@@ -146,6 +169,13 @@ def submit_quiz(
         )
 
     total_questions = len(quiz["questions"])
+
+    if total_questions == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="This quiz has no questions"
+        )
+
     correct_count = 0
     review = []
 
@@ -183,7 +213,7 @@ def submit_quiz(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    quiz_attempts_db.append(attempt)
+    await attempts_collection.insert_one(attempt.copy())
 
     return {
         "message": "Quiz submitted successfully",
@@ -195,12 +225,22 @@ def submit_quiz(
 
 
 @router.get("/attempts/history")
-def get_attempt_history(current_user: dict = Depends(require_student)):
+async def get_attempt_history(current_user: dict = Depends(require_student)):
+    attempts_collection = get_quiz_attempts_collection()
+
     history = []
 
-    for attempt in quiz_attempts_db:
-        if attempt["student_email"] == current_user["email"]:
-            history.append(attempt)
+    cursor = (
+        attempts_collection
+        .find(
+            {"student_email": current_user["email"]},
+            {"_id": 0}
+        )
+        .sort("created_at", -1)
+    )
+
+    async for attempt in cursor:
+        history.append(attempt)
 
     return {
         "history": history
